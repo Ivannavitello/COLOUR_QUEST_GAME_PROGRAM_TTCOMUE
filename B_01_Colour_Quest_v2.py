@@ -197,6 +197,9 @@ class Play:
         self.rounds_wanted = IntVar()
         self.rounds_wanted.set(how_many)
 
+        self.rounds_won = IntVar()
+
+
         # Colour lists and score list
         self.round_colour_list = []
         self.all_scores_list = []
@@ -257,8 +260,8 @@ class Play:
         # list for buttons (frame | text | bg | command | width | row | column)
         control_button_list = [
             [self.game_frame, "Next Round", "#0057D8", self.new_round, 21, 5, None],
-            [self.hints_stats_frame, "Hints", "#FF8000", "", 10, 0, 0],
-            [self.hints_stats_frame, "Stats", "#333333", "", 10, 0, 1],
+            [self.hints_stats_frame, "Hints", "#FF8000", self.to_hints, 10, 0, 0],
+            [self.hints_stats_frame, "Stats", "#333333", self.to_stats, 10, 0, 1],
             [self.game_frame, "End", "#990000", self.close_play, 21, 7, None]
         ]
 
@@ -274,8 +277,11 @@ class Play:
 
         # Retrieve next, stats and end button so that they can be configured
         self.next_button = control_ref_list[0]
+        self.hints_button = control_ref_list[1]
         self.stats_button = control_ref_list[2]
         self.end_game_button = control_ref_list[3]
+
+        self.stats_button.config(state=DISABLED)
 
 
         # Once interface has been created, invoke new
@@ -328,6 +334,9 @@ class Play:
         score and then compares it with median, updates results
          and adds results to stats list.
         """
+        # enable stats button after at least one round has been played.
+        self.stats_button.config(state=NORMAL)
+
         # Get user score and colour based on button press....
         score = int(self.round_colour_list[user_choice][1])
 
@@ -342,6 +351,11 @@ class Play:
             result_text = f"Success! {colour_name} earned you {score} points"
             result_bg = "#82B366"
             self.all_scores_list.append(score)
+
+            rounds_won = self.rounds_won.get()
+            rounds_won += 1
+            self.rounds_won.set(rounds_won)
+
         else:
             result_text = f" Oops {colour_name} ({score}) is less than the target."
             result_bg = "#F8CECC"
@@ -375,6 +389,207 @@ class Play:
         root.deiconify()
         # This will get rid of  our dialog
         self.play_box.destroy()
+
+    def to_hints(self):
+        """
+        Displays hints for playing game
+        :return:
+        """
+        DisplayHints(self)
+
+    def to_stats(self):
+        """
+        Retrieves everything we need to display the game / round statistics"""
+
+        # IMPORTANT: retrieve number of rounds
+        # won as a number (rather than the 'self' container)
+        rounds_won = self.rounds_won.get()
+        stats_bundle = [rounds_won, self.all_scores_list,
+                        self.all_high_score_list]
+
+        Stats(self, stats_bundle)
+
+class Stats:
+    """
+    Displays stats for Colour Quest Game
+    """
+
+    def __init__(self, partner, all_stats_info):
+
+        # Extract information from master list...
+        rounds_won = all_stats_info[0]
+        user_scores = all_stats_info[1]
+        high_scores = all_stats_info[2]
+
+        # sort user scores to find high score...
+        user_scores.sort()
+
+        background = "#ffe6cc"
+        self.stats_box = Toplevel()
+
+        # disable help button
+        partner.stats_button.config(state=DISABLED)
+
+        # If users press cross at top, closes help and
+        # 'releases' help button
+        self.stats_box.protocol('WM_DELETE_WINDOW',
+                                partial(self.close_stats, partner))
+
+        self.stats_frame = Frame(self.stats_box, width=350)
+        self.stats_frame.grid()
+
+        # Math to populate Stats dialogue...
+        rounds_played = len(user_scores)
+
+        success_rate = rounds_won / rounds_played * 100
+        total_score = sum(user_scores)
+        max_possible = sum(high_scores)
+
+        best_score = user_scores[-1]
+        average_score = total_score / rounds_played
+
+        # Strings for Stats labels...
+
+        success_string = (f"Success Rate: {rounds_won} / {rounds_played}"
+                          f" ({success_rate:.0f}%)")
+        total_score_string = f"Total Score: {total_score}"
+        max_possible_string = f"Maximum Possible Score: {max_possible}"
+        best_score_string = f"Best Score: {best_score}"
+
+        # comment formatting, default alignment is W (left), but if
+        # we don't have a comment we want our dashes to be centered.
+        comment_alignment = "W"
+        if total_score == max_possible:
+            comment_string = ("Amazing!  You got the highest "
+                              "possible score!")
+            comment_colour = "#D5E8D4"
+
+        elif total_score == 0:
+            comment_string = ("Oops - You've lost every round!  "
+                              "You might want to look at the hints!")
+            comment_colour = "#F8CECC"
+            best_score_string = f"Best Score: n/a"
+        else:
+            # comment_string = f"{' ' * 15}{'*' * 7}"
+            comment_string = ""
+            comment_colour = "#F0F0F0"
+            comment_alignment = ""
+
+        average_score_string = f"Average Score: {average_score:.0f}\n"
+
+        heading_font = ("Arial", "16", "bold")
+        normal_font = ("Arial", "14")
+        comment_font = ("Arial", "13")
+
+        # Label list (text | font | 'Sticky')
+        all_stats_strings = [
+            ["Statistics", heading_font, ""],
+            [success_string, normal_font, "W"],
+            [total_score_string, normal_font, "W"],
+            [max_possible_string, normal_font, "W"],
+            [comment_string, comment_font, comment_alignment],
+            ["\nRound Stats", heading_font, ""],
+            [best_score_string, normal_font, "W"],
+            [average_score_string, normal_font, "W"]
+        ]
+
+        stats_label_ref_list = []
+        for count, item in enumerate(all_stats_strings):
+            self.stats_label = Label(self.stats_frame, text=item[0], font=item[1], wraplength=300,
+                                     anchor="w", justify="left",
+                                     padx=30, pady=5)
+            self.stats_label.grid(row=count, sticky=item[2], padx=10)
+            stats_label_ref_list.append(self.stats_label)
+
+        # Configure comment label background (for all won / all lost)
+        stats_comment_label = stats_label_ref_list[4]
+        stats_comment_label.config(bg=comment_colour)
+
+        self.dismiss_button = Button(self.stats_frame,
+                                     font=("Arial", 16, "bold"),
+                                     text="Dismiss", bg="#333333",
+                                     fg="#FFFFFF", width=20,
+                                     command=partial(self.close_stats,
+                                                     partner))
+        self.dismiss_button.grid(row=8, padx=10, pady=10)
+
+        # closes help dialogue (used by button and x at top of dialogue)
+
+    def close_stats(self, partner):
+        # Put help button back to normal...
+        partner.stats_button.config(state=NORMAL)
+        self.stats_box.destroy()
+
+
+class DisplayHints:
+
+    def __init__ (self, partner):
+
+        # setup dialogue box and background colour
+        background = "#ffe6cc"
+        self.hints_box = Toplevel()
+
+        # disable help button
+        partner.hints_button.config(state=DISABLED)
+
+        # If users press cross at top, closes help and
+        # 'releases' help button
+        self.hints_box.protocol('WM_DELETE_WINDOW',
+                                partial(self.close_hints, partner))
+
+
+        self.hints_frame = Frame(self.hints_box, width=300,
+                                 height=200)
+
+        self.hints_frame.grid()
+
+        self.hints_heading_label = Label(self.hints_frame,
+                                         text="Help / Info",
+                                         font=("Arial", 14, "bold"))
+        self.hints_heading_label.grid(row=0)
+
+
+        help_text = ("To use the program, simply enter the temperature "
+                     "you wish to convert and the choose to convert to either "
+                     "degrees Celsius (centigrade) or Fahrenheit..\n\n "
+                     "Note that -273 degrees C (-459 F) "
+                     "is absolute zero ( the coldest possible Temperature ). "
+                     "IF you try to convert a temperature that "
+                     "is less than -273 degrees C. you will get "
+                     "an error message. \n\n T0 see your calculation history "
+                     "and export it to a test file, please click the "
+                     "'history / Export ' button.")
+
+        # help text label
+        self.hints_text_label = Label(self.hints_frame,
+                                      text=help_text, wraplength=350,
+                                      justify="left")
+        self.hints_text_label.grid(row=1, padx=10)
+
+        #DIssmiss button frame
+        self.dismiss_button = Button(self.hints_frame,
+                                     font=("Arial", 12, "bold"),
+                                     text="Dismiss", bg="#CC6600",
+                                     fg="#FFFFFF",
+                                     command=partial(self.close_hints, partner))
+        self.dismiss_button.grid(row=2, padx=10, pady=10)
+
+        # List and loop to set background colour on
+        # everything except the buttons.
+        recolour_list = [self.hints_frame, self.hints_heading_label,
+                         self.hints_text_label]
+
+        for item in recolour_list:
+            item.config(bg=background)
+
+    def close_hints(self, partner):
+        """Closes help dialogue box
+         (and enables help button)"""
+        # Put help button back to normal...
+        partner.hints_button.config(state=NORMAL)
+        self.hints_box.destroy()
+
+
 
 # main routine
 if __name__ == "__main__":
